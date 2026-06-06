@@ -1,0 +1,60 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: #06060f;
+  color: #d0d0e8;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Subtle scan-line overlay for the command center feel */
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 3px,
+    rgba(0, 0, 20, 0.04) 3px,
+    rgba(0, 0, 20, 0.04) 4px
+  );
+  pointer-events: none;
+  z-index: 9000;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: #0a0a18; }
+::-webkit-scrollbar-thumb { background: #2a2a50; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #3a3a70; }
+
+/* Select element dark override */
+select {
+  background-color: #0c0c20;
+  color: #d0d0e8;
+}
+select option {
+  background: #0c0c20;
+  color: #d0d0e8;
+}
+
+/* Glow animation for live indicator */
+@keyframes glow-pulse {
+  0%, 100% { box-shadow: 0 0 4px #e53e3e; opacity: 1; }
+  50% { box-shadow: 0 0 10px #e53e3e; opacity: 0.5; }
+}
+.glow-dot {
+  animation: glow-pulse 2s ease-in-out infinite;
+}
