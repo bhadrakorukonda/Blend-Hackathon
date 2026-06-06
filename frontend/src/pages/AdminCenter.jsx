@@ -96,14 +96,16 @@ export default function AdminCenter() {
   const [loading, setLoading]         = useState(true)
   const [error, setError]             = useState(null)
   const [lastRefresh, setLastRefresh] = useState(null)
-  const [barsVisible, setBarsVisible] = useState(false)
-  const barsAnimated                  = useRef(false)
+  const [barsVisible, setBarsVisible]   = useState(false)
+  const [dataVersion, setDataVersion]   = useState(0)
+  const barsAnimated                    = useRef(false)
 
   const load = useCallback(async () => {
     try {
       const d = await getAdminStats()
       setData(d)
       setLastRefresh(new Date())
+      setDataVersion(v => v + 1)
       setError(null)
     } catch (e) {
       setError(e.message)
@@ -130,7 +132,10 @@ export default function AdminCenter() {
   const sc  = data?.status_counts || {}
   const ic  = data?.intent_counts || {}
   const bgd = data?.blood_group_demand || {}
-  const reqs = data?.requests || []
+  const STATUS_ORDER = { pending: 0, awaiting: 1, escalate: 2, confirmed: 3, exhausted: 4 }
+  const reqs = [...(data?.requests || [])].sort(
+    (a, b) => (STATUS_ORDER[a.status] ?? 5) - (STATUS_ORDER[b.status] ?? 5)
+  )
   const responseTotal = (ic.YES || 0) + (ic.NO || 0) + (ic.MAYBE || 0) || 1
   const bgEntries = Object.entries(bgd).sort((a, b) => b[1] - a[1])
   const bgMax     = bgEntries[0]?.[1] || 1
@@ -191,7 +196,7 @@ export default function AdminCenter() {
       {data && (
         <>
           {/* KPI row — count-up animation */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
+          <div key={`kpi-${dataVersion}`} className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
             <KpiCard
               label="TOTAL REQUESTS"
               rawValue={data.total}
@@ -311,10 +316,9 @@ export default function AdminCenter() {
                             ${isExhausted
                               ? 'opacity-20 hover:opacity-40'
                               : isConfirmed
-                                ? 'hover:bg-emerald-900/20'
+                                ? 'border-l-2 border-emerald-500 bg-emerald-500/5 hover:bg-emerald-900/20'
                                 : (i % 2 === 0 ? 'bg-transparent' : 'bg-[#0d0d22]/40') + ' hover:bg-[#10102a]'
                             }`}
-                          style={isConfirmed ? { background: 'rgba(16,185,129,0.06)', boxShadow: 'inset 0 0 20px rgba(16,185,129,0.07)' } : undefined}
                         >
                           <td className="px-4 py-3 font-mono text-[11px] text-[#4a4a80]">
                             {req.request_id.slice(0, 8).toUpperCase()}…

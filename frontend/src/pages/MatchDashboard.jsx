@@ -19,6 +19,12 @@ const RANK_COLORS = [
   { bg: 'bg-[#1a1a35]',     text: 'text-[#7070c0]', border: 'border-[#2a2a55]' },
 ]
 
+function fmtDist(km) {
+  const n = parseFloat(km)
+  if (!n || n < 1) return '< 1 km'
+  return `${km} km`
+}
+
 function useCountUp(target, duration = 900) {
   const [value, setValue] = useState(0)
   useEffect(() => {
@@ -41,12 +47,15 @@ function useCountUp(target, duration = 900) {
   return value
 }
 
-function StatCard({ label, rawValue, isInt = false, suffix = '' }) {
-  const animated = useCountUp(parseFloat(rawValue) || 0)
-  const display = isInt ? Math.round(animated) : animated.toFixed(1)
+function StatCard({ label, rawValue, isInt = false, suffix = '', overrideDisplay = null }) {
+  const numTarget = overrideDisplay === null ? (parseFloat(rawValue) || 0) : 0
+  const animated  = useCountUp(numTarget)
+  const display   = overrideDisplay !== null
+    ? overrideDisplay
+    : (isInt ? Math.round(animated) : animated.toFixed(1))
   return (
     <div className="bg-[#0b0b1e] border border-[#1a1a38] rounded-xl p-4 text-center">
-      <div className="text-2xl font-bold font-mono text-[#e0e0f4]">{display}{suffix}</div>
+      <div className="text-2xl font-bold font-mono text-[#e0e0f4]">{display}{overrideDisplay === null ? suffix : ''}</div>
       <div className="text-[9px] font-mono tracking-widest text-[#3a3a7a] mt-1">{label}</div>
     </div>
   )
@@ -71,7 +80,7 @@ function TopDonorCard({ donor }) {
           <div className="text-xl font-bold text-[#e0e0f4] mb-2">{type}</div>
           <div className="flex items-center gap-3 flex-wrap">
             <BloodBadge group={donor.blood_group} />
-            <span className="text-[12px] font-mono text-[#5050a0]">{donor.distance_km} km away</span>
+            <span className="text-[12px] font-mono text-[#5050a0]">{fmtDist(donor.distance_km)}</span>
             <span className="text-[12px] font-mono text-[#5050a0]">{donor.donations_till_date} donations</span>
           </div>
         </div>
@@ -114,7 +123,7 @@ function DonorCard({ donor, rank }) {
         <div className="flex-1 min-w-0">
           <div className="text-[13px] font-medium text-[#d0d0e8] truncate">{type}</div>
           <div className="text-[11px] text-[#5050a0] mt-0.5 font-mono">
-            {donor.distance_km} km &nbsp;·&nbsp; {donor.donations_till_date} donations
+            {fmtDist(donor.distance_km)} &nbsp;·&nbsp; {donor.donations_till_date} donations
           </div>
         </div>
         <BloodBadge group={donor.blood_group} />
@@ -126,7 +135,7 @@ function DonorCard({ donor, rank }) {
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mt-3">
             {[
               { label: 'MATCH SCORE',     value: `${donor.score}/100` },
-              { label: 'DISTANCE',        value: `${donor.distance_km} km` },
+              { label: 'DISTANCE',        value: fmtDist(donor.distance_km) },
               { label: 'TOTAL DONATIONS', value: donor.donations_till_date || '0' },
               { label: 'CALL RATIO',      value: donor.calls_to_donations_ratio || '—' },
               { label: 'DONOR TYPE',      value: donor.donor_type || '—' },
@@ -184,9 +193,10 @@ export default function MatchDashboard() {
     setPatientIdx('')
   }
 
-  const donors    = results?.top_donors || []
-  const topDonor  = donors[0]
+  const donors     = results?.top_donors || []
+  const topDonor   = donors[0]
   const restDonors = donors.slice(1)
+  const distKm     = parseFloat(topDonor?.distance_km) || 0
 
   return (
     <main className="max-w-3xl mx-auto px-4 py-8">
@@ -307,7 +317,12 @@ export default function MatchDashboard() {
             <div className="grid grid-cols-3 gap-3 mb-4">
               <StatCard label="DONORS MATCHED" rawValue={donors.length} isInt />
               <StatCard label="TOP SCORE"      rawValue={topDonor.score} />
-              <StatCard label="NEAREST"        rawValue={topDonor.distance_km} suffix=" km" />
+              <StatCard
+                label="NEAREST"
+                rawValue={distKm >= 1 ? distKm : 0}
+                suffix=" km"
+                overrideDisplay={distKm < 1 ? '< 1 km' : null}
+              />
             </div>
           )}
 
