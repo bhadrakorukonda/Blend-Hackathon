@@ -72,8 +72,9 @@ function TopDonorCard({ donor }) {
       </div>
 
       <div className="px-6 py-5 flex items-center gap-6">
-        <div className="flex-shrink-0">
+        <div className="flex-shrink-0 flex flex-col items-center gap-1">
           <ScoreRing score={donor.score} size={88} />
+          <span className="text-[9px] font-mono tracking-widest text-[#3a3a7a]">SCORE</span>
         </div>
         <div className="flex-1 min-w-0">
           <div className="text-[9px] font-mono tracking-widest text-red-500/70 mb-1">#1 RANKED MATCH</div>
@@ -81,7 +82,9 @@ function TopDonorCard({ donor }) {
           <div className="flex items-center gap-3 flex-wrap">
             <BloodBadge group={donor.blood_group} />
             <span className="text-[12px] font-mono text-[#5050a0]">{fmtDist(donor.distance_km)}</span>
-            <span className="text-[12px] font-mono text-[#5050a0]">{donor.donations_till_date} donations</span>
+            <span className="text-[12px] font-mono text-[#5050a0]">
+              {donor.donations_till_date} donation{donor.donations_till_date === 1 ? '' : 's'}
+            </span>
           </div>
         </div>
       </div>
@@ -123,7 +126,7 @@ function DonorCard({ donor, rank }) {
         <div className="flex-1 min-w-0">
           <div className="text-[13px] font-medium text-[#d0d0e8] truncate">{type}</div>
           <div className="text-[11px] text-[#5050a0] mt-0.5 font-mono">
-            {fmtDist(donor.distance_km)} &nbsp;·&nbsp; {donor.donations_till_date} donations
+            {fmtDist(donor.distance_km)} &nbsp;·&nbsp; {donor.donations_till_date} donation{donor.donations_till_date === 1 ? '' : 's'}
           </div>
         </div>
         <BloodBadge group={donor.blood_group} />
