@@ -14,11 +14,10 @@ body {
   margin: 0;
   background: #06060f;
   color: #d0d0e8;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   -webkit-font-smoothing: antialiased;
 }
 
-/* Subtle scan-line overlay for the command center feel */
+/* Subtle scan-line overlay */
 body::after {
   content: '';
   position: fixed;
@@ -50,11 +49,88 @@ select option {
   color: #d0d0e8;
 }
 
-/* Glow animation for live indicator */
+/* Glow animation for live indicators */
 @keyframes glow-pulse {
-  0%, 100% { box-shadow: 0 0 4px #e53e3e; opacity: 1; }
-  50% { box-shadow: 0 0 10px #e53e3e; opacity: 0.5; }
+  0%, 100% { box-shadow: 0 0 4px currentColor; opacity: 1; }
+  50%       { box-shadow: 0 0 12px currentColor; opacity: 0.35; }
 }
 .glow-dot {
-  animation: glow-pulse 2s ease-in-out infinite;
+  animation: glow-pulse 1.5s ease-in-out infinite;
+}
+
+/* Nav active link — dramatic red gradient underline */
+.nav-active-link {
+  position: relative;
+  color: #f87171 !important;
+  background: linear-gradient(180deg, rgba(229,62,62,0.13) 0%, transparent 100%);
+  border-radius: 4px;
+  padding: 6px 16px;
+}
+.nav-active-link::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 10%;
+  right: 10%;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, #e53e3e 30%, #ff8080 50%, #e53e3e 70%, transparent);
+  border-radius: 2px;
+}
+
+/* Page enter transition */
+@keyframes page-enter {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.page-enter {
+  animation: page-enter 0.22s ease-out both;
+}
+
+/* Scanning beam sweeping through progress bar */
+@keyframes scan-beam {
+  0%   { left: -70%; }
+  100% { left: 110%; }
+}
+.scan-beam {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 70%;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(229, 62, 62, 0.25) 25%,
+    rgba(229, 62, 62, 0.9) 50%,
+    rgba(229, 62, 62, 0.25) 75%,
+    transparent 100%
+  );
+  animation: scan-beam 1.4s ease-in-out infinite;
+}
+
+/* Top match card pulsing glow */
+@keyframes top-match-pulse {
+  0%, 100% {
+    box-shadow:
+      0 0 20px rgba(229, 62, 62, 0.25),
+      0 0 40px rgba(229, 62, 62, 0.08),
+      inset 0 0 30px rgba(229, 62, 62, 0.03);
+  }
+  50% {
+    box-shadow:
+      0 0 35px rgba(229, 62, 62, 0.5),
+      0 0 70px rgba(229, 62, 62, 0.18),
+      inset 0 0 30px rgba(229, 62, 62, 0.07);
+  }
+}
+.top-match-card {
+  animation: top-match-pulse 2.5s ease-in-out infinite;
+}
+
+/* Live broadcast top border */
+@keyframes border-live-pulse {
+  0%, 100% { opacity: 0.85; }
+  50%       { opacity: 0.12; }
+}
+.border-live {
+  animation: border-live-pulse 2s ease-in-out infinite;
 }

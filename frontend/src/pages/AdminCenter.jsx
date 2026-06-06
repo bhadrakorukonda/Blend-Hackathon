@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { getAdminStats } from '../api'
 import BloodBadge from '../components/BloodBadge'
 import StatusBadge from '../components/StatusBadge'
@@ -19,6 +19,39 @@ function timeAgo(iso) {
   if (s < 3600)  return `${Math.floor(s / 60)}m ago`
   if (s < 86400) return `${Math.floor(s / 3600)}h ago`
   return `${Math.floor(s / 86400)}d ago`
+}
+
+function useCountUp(target, duration = 900) {
+  const [value, setValue] = useState(0)
+  useEffect(() => {
+    if (target === null || target === undefined) return
+    const num = parseFloat(target) || 0
+    if (num === 0) { setValue(0); return }
+    const start = Date.now()
+    let raf
+    const tick = () => {
+      const elapsed = Date.now() - start
+      const progress = Math.min(elapsed / duration, 1)
+      const eased = 1 - Math.pow(1 - progress, 3)
+      setValue(eased * num)
+      if (progress < 1) raf = requestAnimationFrame(tick)
+      else setValue(num)
+    }
+    raf = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(raf)
+  }, [target, duration])
+  return value
+}
+
+function KpiCard({ label, rawValue, color, isInt = true, suffix = '' }) {
+  const animated = useCountUp(parseFloat(rawValue) || 0)
+  const display = isInt ? Math.round(animated) : animated.toFixed(1)
+  return (
+    <div className="bg-[#0b0b1e] border border-[#1a1a38] rounded-xl p-4">
+      <div className={`text-3xl font-bold font-mono ${color}`}>{display}{suffix}</div>
+      <div className="text-[9px] font-mono tracking-widest text-[#3a3a7a] mt-2">{label}</div>
+    </div>
+  )
 }
 
 function MiniRing({ label, count, total, color }) {
@@ -51,10 +84,7 @@ function RankPips({ rank, total = 5 }) {
   return (
     <div className="flex items-center gap-1">
       {Array.from({ length: total }, (_, i) => (
-        <span
-          key={i}
-          className={`w-2 h-2 rounded-full ${i < rank ? 'bg-red-500' : 'bg-[#1e1e40]'}`}
-        />
+        <span key={i} className={`w-2 h-2 rounded-full ${i < rank ? 'bg-red-500' : 'bg-[#1e1e40]'}`} />
       ))}
       <span className="text-[10px] font-mono text-[#4a4a80] ml-1">{rank}/{total}</span>
     </div>
@@ -62,10 +92,12 @@ function RankPips({ rank, total = 5 }) {
 }
 
 export default function AdminCenter() {
-  const [data, setData]             = useState(null)
-  const [loading, setLoading]       = useState(true)
-  const [error, setError]           = useState(null)
+  const [data, setData]               = useState(null)
+  const [loading, setLoading]         = useState(true)
+  const [error, setError]             = useState(null)
   const [lastRefresh, setLastRefresh] = useState(null)
+  const [barsVisible, setBarsVisible] = useState(false)
+  const barsAnimated                  = useRef(false)
 
   const load = useCallback(async () => {
     try {
@@ -86,6 +118,15 @@ export default function AdminCenter() {
     return () => clearInterval(id)
   }, [load])
 
+  useEffect(() => {
+    if (!data || barsAnimated.current) return
+    const t = setTimeout(() => {
+      setBarsVisible(true)
+      barsAnimated.current = true
+    }, 80)
+    return () => clearTimeout(t)
+  }, [data])
+
   const sc  = data?.status_counts || {}
   const ic  = data?.intent_counts || {}
   const bgd = data?.blood_group_demand || {}
@@ -97,10 +138,19 @@ export default function AdminCenter() {
   return (
     <main className="max-w-6xl mx-auto px-4 py-8">
 
+      {/* Live broadcast top border */}
+      <div
+        className="border-live fixed left-0 right-0 h-[2px] z-40"
+        style={{
+          top: '56px',
+          background: 'linear-gradient(90deg, transparent, #e53e3e 20%, #ff6b6b 50%, #e53e3e 80%, transparent)',
+        }}
+      />
+
       {/* Page title */}
       <div className="flex items-end justify-between mb-8">
         <div>
-          <div className="text-[10px] font-mono tracking-widest text-[#3030606] mb-1">SYSTEM / ADMIN</div>
+          <div className="text-[10px] font-mono tracking-widest text-[#303060] mb-1">SYSTEM / ADMIN</div>
           <h1 className="text-2xl font-bold text-[#e0e0f4] tracking-wide">Command Center</h1>
         </div>
         <div className="flex items-center gap-3">
@@ -140,25 +190,35 @@ export default function AdminCenter() {
 
       {data && (
         <>
-          {/* KPI row */}
+          {/* KPI row — count-up animation */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
-            {[
-              { label: 'TOTAL REQUESTS',  value: data.total,                   color: 'text-[#d0d0e8]' },
-              { label: 'CONFIRMED',       value: sc.confirmed || 0,            color: 'text-emerald-400' },
-              { label: 'SUCCESS RATE',    value: `${data.success_rate || 0}%`, color: (data.success_rate || 0) >= 50 ? 'text-emerald-400' : 'text-red-400' },
-              { label: 'AVG ESCALATIONS', value: data.avg_escalations || 0,   color: 'text-amber-400' },
-            ].map(k => (
-              <div key={k.label} className="bg-[#0b0b1e] border border-[#1a1a38] rounded-xl p-4">
-                <div className={`text-3xl font-bold font-mono ${k.color}`}>{k.value}</div>
-                <div className="text-[9px] font-mono tracking-widest text-[#3a3a7a] mt-2">{k.label}</div>
-              </div>
-            ))}
+            <KpiCard
+              label="TOTAL REQUESTS"
+              rawValue={data.total}
+              color="text-[#d0d0e8]"
+            />
+            <KpiCard
+              label="CONFIRMED"
+              rawValue={sc.confirmed || 0}
+              color="text-emerald-400"
+            />
+            <KpiCard
+              label="SUCCESS RATE"
+              rawValue={data.success_rate || 0}
+              color={(data.success_rate || 0) >= 50 ? 'text-emerald-400' : 'text-red-400'}
+              suffix="%"
+            />
+            <KpiCard
+              label="AVG ESCALATIONS"
+              rawValue={data.avg_escalations || 0}
+              color="text-amber-400"
+              isInt={false}
+            />
           </div>
 
           {/* Mid row: responses + status */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
 
-            {/* Donor responses */}
             <div className="bg-[#0b0b1e] border border-[#1a1a38] rounded-xl p-5">
               <div className="text-[10px] font-mono tracking-widest text-[#3a3a7a] mb-4">DONOR RESPONSES</div>
               <div className="flex items-center gap-6">
@@ -171,7 +231,6 @@ export default function AdminCenter() {
               </div>
             </div>
 
-            {/* Request status */}
             <div className="bg-[#0b0b1e] border border-[#1a1a38] rounded-xl p-5">
               <div className="text-[10px] font-mono tracking-widest text-[#3a3a7a] mb-4">REQUEST STATUS</div>
               <div className="flex flex-wrap gap-2">
@@ -190,7 +249,7 @@ export default function AdminCenter() {
             </div>
           </div>
 
-          {/* Blood group demand */}
+          {/* Blood group demand — bars animate 0→actual */}
           <div className="bg-[#0b0b1e] border border-[#1a1a38] rounded-xl p-5 mb-4">
             <div className="text-[10px] font-mono tracking-widest text-[#3a3a7a] mb-4">BLOOD GROUP DEMAND</div>
             {bgEntries.length > 0 ? (
@@ -202,9 +261,10 @@ export default function AdminCenter() {
                     </div>
                     <div className="flex-1 h-2 bg-[#1a1a38] rounded-full overflow-hidden">
                       <div
-                        className="h-full rounded-full transition-all duration-700"
+                        className="h-full rounded-full"
                         style={{
-                          width: `${(count / bgMax * 100).toFixed(1)}%`,
+                          width: barsVisible ? `${(count / bgMax * 100).toFixed(1)}%` : '0%',
+                          transition: 'width 0.9s cubic-bezier(0.4, 0, 0.2, 1)',
                           background: BG_COLOR[group] || '#6060a0',
                         }}
                       />
@@ -241,11 +301,20 @@ export default function AdminCenter() {
                       const dr     = req.donor_response
                       const intent = dr && typeof dr === 'object' ? dr.intent : null
                       const intentColor = { YES: 'text-emerald-400', NO: 'text-red-400', MAYBE: 'text-amber-400' }[intent] || 'text-[#4a4a80]'
+                      const isConfirmed = req.status === 'confirmed'
+                      const isExhausted = req.status === 'exhausted'
 
                       return (
                         <tr
                           key={req.request_id}
-                          className={`border-b border-[#0f0f28] transition-colors ${i % 2 === 0 ? 'bg-transparent' : 'bg-[#0d0d22]/40'} hover:bg-[#10102a]`}
+                          className={`border-b border-[#0f0f28] transition-colors
+                            ${isExhausted
+                              ? 'opacity-20 hover:opacity-40'
+                              : isConfirmed
+                                ? 'hover:bg-emerald-900/20'
+                                : (i % 2 === 0 ? 'bg-transparent' : 'bg-[#0d0d22]/40') + ' hover:bg-[#10102a]'
+                            }`}
+                          style={isConfirmed ? { background: 'rgba(16,185,129,0.06)', boxShadow: 'inset 0 0 20px rgba(16,185,129,0.07)' } : undefined}
                         >
                           <td className="px-4 py-3 font-mono text-[11px] text-[#4a4a80]">
                             {req.request_id.slice(0, 8).toUpperCase()}…
