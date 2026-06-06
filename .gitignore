@@ -1,0 +1,12 @@
+*.zip
+__pycache__/
+.env
+payload.json
+response.json
+bucket-policy.json
+request-templates.json
+method-response-params.json
+integration-response-params.json
+integration-response-params.json
+patients.json
+Dataset.csv

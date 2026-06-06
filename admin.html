@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Blood Warriors · Admin</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#fafafa;color:#1a1a1a;min-height:100vh;}
+.app{max-width:900px;margin:0 auto;padding:2.5rem 1.25rem;}
+
+/* Header */
+.header{display:flex;align-items:center;gap:14px;margin-bottom:2rem;}
+.logo{width:44px;height:44px;border-radius:12px;background:#FCEBEB;border:1px solid #F09595;display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0;}
+.header-text h1{font-size:20px;font-weight:600;}
+.header-text p{font-size:13px;color:#888;margin-top:2px;}
+.live-dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:#0f6e56;animation:pulse 2s ease-in-out infinite;margin-right:5px;}
+@keyframes pulse{0%,100%{opacity:1;}50%{opacity:0.3;}}
+.refresh-btn{margin-left:auto;font-size:12px;padding:6px 14px;background:#fff;border:1px solid #ddd;border-radius:8px;cursor:pointer;color:#555;}
+.refresh-btn:hover{background:#f5f5f5;}
+.last-refresh{font-size:11px;color:#aaa;margin-left:10px;}
+
+/* Stats row */
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:1.5rem;}
+@media(max-width:600px){.stats{grid-template-columns:repeat(2,1fr);}}
+.stat{background:#fff;border:1px solid #e8e8e8;border-radius:12px;padding:16px;}
+.stat-val{font-size:28px;font-weight:700;color:#1a1a1a;line-height:1;}
+.stat-lbl{font-size:11px;color:#888;margin-top:6px;text-transform:uppercase;letter-spacing:0.5px;}
+
+/* Sections */
+.section{background:#fff;border:1px solid #e8e8e8;border-radius:14px;padding:1.25rem;margin-bottom:1rem;}
+.section-title{font-size:13px;font-weight:600;color:#555;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:1rem;}
+
+/* Response ring row */
+.ring-row{display:flex;gap:1.5rem;align-items:center;flex-wrap:wrap;}
+.ring-item{display:flex;flex-direction:column;align-items:center;gap:4px;}
+.ring-label{font-size:11px;color:#888;text-transform:uppercase;letter-spacing:0.5px;}
+.ring-count{font-size:18px;font-weight:700;}
+
+/* Blood group demand bars */
+.bg-bar-row{display:flex;flex-direction:column;gap:8px;}
+.bg-bar-item{display:flex;align-items:center;gap:10px;}
+.bg-bar-label{width:100px;font-size:12px;font-weight:500;text-align:right;flex-shrink:0;}
+.bg-bar-track{flex:1;height:10px;background:#f0f0f0;border-radius:5px;overflow:hidden;}
+.bg-bar-fill{height:100%;border-radius:5px;transition:width 0.6s ease;}
+.bg-bar-count{font-size:12px;color:#888;width:24px;flex-shrink:0;}
+
+/* Status breakdown */
+.status-row{display:flex;gap:8px;flex-wrap:wrap;}
+.status-chip{padding:5px 14px;border-radius:20px;font-size:12px;font-weight:600;}
+
+/* Request table */
+.req-table{width:100%;border-collapse:collapse;}
+.req-table th{font-size:10px;text-transform:uppercase;letter-spacing:0.5px;color:#aaa;font-weight:600;text-align:left;padding:0 10px 8px 10px;border-bottom:1px solid #f0f0f0;}
+.req-table td{font-size:12px;padding:10px;border-bottom:1px solid #f8f8f8;vertical-align:middle;}
+.req-table tr:last-child td{border-bottom:none;}
+.req-table tr:hover td{background:#fafafa;}
+.status-badge{display:inline-block;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600;}
+.badge-confirmed{background:#e1f5ee;color:#0f6e56;}
+.badge-pending  {background:#FAEEDA;color:#633806;}
+.badge-awaiting {background:#E6F1FB;color:#0C447C;}
+.badge-escalate {background:#FCEBEB;color:#791F1F;}
+.badge-exhausted{background:#f0f0f0;color:#666;}
+.mono{font-family:monospace;color:#888;font-size:11px;}
+.rank-pip{display:inline-flex;align-items:center;gap:3px;font-size:11px;color:#888;}
+.rank-pip span{width:7px;height:7px;border-radius:50%;background:#e0e0e0;display:inline-block;}
+.rank-pip span.active{background:#a32d2d;}
+
+/* Intent badge */
+.intent-yes{color:#0f6e56;font-weight:700;}
+.intent-no {color:#791F1F;font-weight:700;}
+.intent-maybe{color:#633806;font-weight:700;}
+
+/* Empty state */
+.empty{text-align:center;padding:3rem;color:#aaa;font-size:14px;}
+
+/* Loading */
+.loading{text-align:center;padding:4rem;color:#aaa;}
+.spinner{width:20px;height:20px;border:2px solid #eee;border-top-color:#a32d2d;border-radius:50%;animation:spin 0.7s linear infinite;display:inline-block;vertical-align:middle;margin-right:8px;}
+@keyframes spin{to{transform:rotate(360deg);}}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <div class="header">
+    <div class="logo">🩸</div>
+    <div class="header-text">
+      <h1>Blood Warriors <span style="color:#888;font-weight:400;">/ Admin</span></h1>
+      <p><span class="live-dot"></span>Live match request monitoring</p>
+    </div>
+    <button class="refresh-btn" onclick="load()">Refresh</button>
+    <span class="last-refresh" id="last-refresh"></span>
+  </div>
+
+  <div id="loading" class="loading"><span class="spinner"></span>Loading dashboard…</div>
+  <div id="dashboard" style="display:none;">
+
+    <!-- KPI stats -->
+    <div class="stats" id="kpi-row"></div>
+
+    <!-- Row: response breakdown + status breakdown -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:1rem;">
+
+      <div class="section">
+        <div class="section-title">Donor responses</div>
+        <div class="ring-row" id="response-row"></div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">Request status</div>
+        <div class="status-row" id="status-row"></div>
+      </div>
+
+    </div>
+
+    <!-- Blood group demand -->
+    <div class="section">
+      <div class="section-title">Blood group demand</div>
+      <div class="bg-bar-row" id="bg-bar-row"></div>
+    </div>
+
+    <!-- Live requests -->
+    <div class="section">
+      <div class="section-title">Live match requests</div>
+      <div id="req-list"></div>
+    </div>
+
+  </div><!-- /dashboard -->
+</div>
+
+<script>
+const API = 'https://046giqhktg.execute-api.ap-south-1.amazonaws.com/prod/admin';
+
+const BG_COLORS = {
+  'O Negative': '#a32d2d','O Positive': '#a32d2d',
+  'A Negative': '#BA7517','A Positive': '#BA7517',
+  'B Negative': '#0C447C','B Positive': '#0C447C',
+  'AB Negative':'#3C3489','AB Positive':'#3C3489',
+};
+function bgColor(g){return BG_COLORS[g]||'#888';}
+
+function timeAgo(iso){
+  if(!iso) return '—';
+  const d = new Date(iso.endsWith('Z')?iso:iso+'Z');
+  if(isNaN(d)) return '—';
+  const s = Math.floor((Date.now()-d)/1000);
+  if(s<60)   return s+'s ago';
+  if(s<3600) return Math.floor(s/60)+'m ago';
+  if(s<86400)return Math.floor(s/3600)+'h ago';
+  return Math.floor(s/86400)+'d ago';
+}
+
+function ring(label, count, color){
+  const r=28,cx=34,cy=34,circ=2*Math.PI*r;
+  const total = (window._ringTotal||1);
+  const pct   = Math.min(count/total,1);
+  const dash  = pct*circ;
+  return `<div class="ring-item">
+    <svg width="68" height="68">
+      <circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="#f0f0f0" stroke-width="5"/>
+      <circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${color}" stroke-width="5"
+        stroke-dasharray="${dash.toFixed(1)} ${(circ-dash).toFixed(1)}"
+        stroke-dashoffset="${(circ/4).toFixed(1)}" stroke-linecap="round"/>
+      <text x="${cx}" y="${cy+5}" text-anchor="middle" font-size="14" font-weight="700" fill="${color}">${count}</text>
+    </svg>
+    <div class="ring-label">${label}</div>
+  </div>`;
+}
+
+function rankPips(rank, total){
+  let html='<div class="rank-pip">';
+  for(let i=0;i<Math.min(total,5);i++){
+    html+=`<span class="${i<rank?'active':''}"></span>`;
+  }
+  html+=`&nbsp;${rank}/${total}</div>`;
+  return html;
+}
+
+function statusBadge(s){
+  return `<span class="status-badge badge-${s}">${s}</span>`;
+}
+
+function intentBadge(intent){
+  if(!intent) return '—';
+  const cls = {YES:'intent-yes',NO:'intent-no',MAYBE:'intent-maybe'}[intent]||'';
+  return `<span class="${cls}">${intent}</span>`;
+}
+
+async function load(){
+  try{
+    const res  = await fetch(API,{cache:'no-cache'});
+    const text = await res.text();
+    const raw  = JSON.parse(text);
+    const data = typeof raw.body==='string'?JSON.parse(raw.body):raw;
+    render(data);
+    document.getElementById('last-refresh').textContent='Updated '+new Date().toLocaleTimeString();
+  }catch(e){
+    console.error(e);
+    document.getElementById('loading').innerHTML='<span style="color:#a32d2d;">Failed to load. Check CORS / deployment.</span><br><small>'+e.message+'</small>';
+  }
+}
+
+function render(data){
+  document.getElementById('loading').style.display='none';
+  document.getElementById('dashboard').style.display='block';
+
+  const total     = data.total||0;
+  const confirmed = (data.status_counts||{}).confirmed||0;
+  const exhausted = (data.status_counts||{}).exhausted||0;
+  const active    = total - confirmed - exhausted;
+
+  // KPIs
+  document.getElementById('kpi-row').innerHTML=[
+    {val: total,                     lbl:'Total requests'},
+    {val: confirmed,                 lbl:'Confirmed donors', color:'#0f6e56'},
+    {val: (data.success_rate||0)+'%', lbl:'Success rate',    color: data.success_rate>=50?'#0f6e56':'#a32d2d'},
+    {val: data.avg_escalations||0,   lbl:'Avg escalations'},
+  ].map(k=>`<div class="stat">
+    <div class="stat-val" style="${k.color?'color:'+k.color:''}">${k.val}</div>
+    <div class="stat-lbl">${k.lbl}</div>
+  </div>`).join('');
+
+  // Response rings
+  const ic = data.intent_counts||{};
+  const responseTotal = (ic.YES||0)+(ic.NO||0)+(ic.MAYBE||0)||1;
+  window._ringTotal = responseTotal;
+  document.getElementById('response-row').innerHTML=(
+    ring('YES',   ic.YES||0,   '#0f6e56')+
+    ring('NO',    ic.NO||0,    '#a32d2d')+
+    ring('MAYBE', ic.MAYBE||0, '#BA7517')+
+    `<div style="flex:1;font-size:12px;color:#aaa;text-align:center;">`+
+    (responseTotal===1?'No replies yet':responseTotal+' total replies')+
+    `</div>`
+  );
+
+  // Status breakdown
+  const sc = data.status_counts||{};
+  const statuses = ['pending','awaiting','escalate','confirmed','exhausted'];
+  document.getElementById('status-row').innerHTML=statuses
+    .filter(s=>sc[s]>0)
+    .map(s=>`<span class="status-badge badge-${s}">${sc[s]} ${s}</span>`)
+    .join('')||'<span style="color:#aaa;font-size:13px;">No data</span>';
+
+  // Blood group demand bars
+  const bgd = data.blood_group_demand||{};
+  const bgEntries = Object.entries(bgd).sort((a,b)=>b[1]-a[1]);
+  const bgMax = bgEntries[0]?.[1]||1;
+  document.getElementById('bg-bar-row').innerHTML = bgEntries.length
+    ? bgEntries.map(([g,cnt])=>`
+      <div class="bg-bar-item">
+        <div class="bg-bar-label">${g}</div>
+        <div class="bg-bar-track">
+          <div class="bg-bar-fill" style="width:${(cnt/bgMax*100).toFixed(1)}%;background:${bgColor(g)};"></div>
+        </div>
+        <div class="bg-bar-count">${cnt}</div>
+      </div>`).join('')
+    : '<span style="color:#aaa;font-size:13px;">No data</span>';
+
+  // Request list
+  const reqs = data.requests||[];
+  if(!reqs.length){
+    document.getElementById('req-list').innerHTML='<div class="empty">No match requests yet</div>';
+    return;
+  }
+
+  const rows = reqs.map(r=>{
+    const esc  = r.escalation_count||0;
+    const rank = r.current_donor_rank||0;
+    const dr   = r.donor_response;
+    const intent = dr&&typeof dr==='object' ? dr.intent : (typeof dr==='string'?JSON.parse(dr||'{}').intent:null);
+    return `<tr>
+      <td><span class="mono">${r.request_id.slice(0,8)}…</span></td>
+      <td>
+        <span class="status-badge" style="background:${bgColor(r.patient_blood_group)}22;color:${bgColor(r.patient_blood_group)};border:1px solid ${bgColor(r.patient_blood_group)}44;">
+          ${r.patient_blood_group||'?'}
+        </span>
+      </td>
+      <td>${statusBadge(r.status||'unknown')}</td>
+      <td>${rankPips(rank+1, 5)}</td>
+      <td>${esc>0?`<span style="color:#a32d2d;font-weight:600;">${esc}×</span>`:'—'}</td>
+      <td>${intentBadge(intent)}</td>
+      <td style="color:#aaa;">${timeAgo(r.created_at)}</td>
+      <td style="color:#aaa;">${r.last_outreach_at?timeAgo(r.last_outreach_at):'—'}</td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('req-list').innerHTML=`
+    <table class="req-table">
+      <thead>
+        <tr>
+          <th>Request ID</th>
+          <th>Blood group</th>
+          <th>Status</th>
+          <th>Donor rank</th>
+          <th>Escalations</th>
+          <th>Response</th>
+          <th>Created</th>
+          <th>Last outreach</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
+
+// Load on start + auto-refresh every 30s
+load();
+setInterval(load, 30000);
+</script>
+</body>
+</html>

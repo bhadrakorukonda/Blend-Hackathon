@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Blood Warriors</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#fafafa;color:#1a1a1a;min-height:100vh;}
+.app{max-width:620px;margin:0 auto;padding:2.5rem 1.25rem;}
+.header{text-align:center;margin-bottom:2.5rem;}
+.logo{width:60px;height:60px;border-radius:16px;background:#FCEBEB;border:1px solid #F09595;display:inline-flex;align-items:center;justify-content:center;font-size:28px;margin-bottom:14px;}
+h1{font-size:24px;font-weight:600;color:#1a1a1a;margin-bottom:6px;}
+.subtitle{font-size:14px;color:#666;}
+.card{background:#fff;border:1px solid #e8e8e8;border-radius:14px;padding:1.5rem;}
+label{font-size:13px;font-weight:500;color:#555;display:block;margin-bottom:8px;}
+select{width:100%;padding:10px 14px;border:1px solid #ddd;border-radius:8px;font-size:14px;outline:none;background:#fff;cursor:pointer;margin-bottom:12px;}
+select:focus{border-color:#a32d2d;}
+.btn{width:100%;padding:11px;font-size:14px;font-weight:600;background:#a32d2d;color:#fff;border:none;border-radius:8px;cursor:pointer;transition:background 0.2s;}
+.btn:hover{background:#791f1f;}
+.btn:disabled{background:#ccc;cursor:not-allowed;}
+.err{font-size:13px;color:#a32d2d;margin-bottom:10px;}
+.stats{display:flex;gap:10px;margin-bottom:1.25rem;}
+.stat{flex:1;background:#f5f5f5;border-radius:10px;padding:12px;text-align:center;}
+.stat-val{font-size:22px;font-weight:600;color:#1a1a1a;}
+.stat-lbl{font-size:11px;color:#888;margin-top:2px;}
+
+/* Donor card */
+.donor-wrap{margin-bottom:8px;border:1px solid #e8e8e8;border-radius:12px;overflow:hidden;background:#fff;opacity:0;transform:translateY(10px);transition:opacity 0.3s ease,transform 0.3s ease;}
+.donor-wrap.show{opacity:1;transform:translateY(0);}
+.donor-card{display:flex;align-items:center;gap:12px;padding:13px 16px;cursor:pointer;user-select:none;}
+.donor-card:hover{background:#fafafa;}
+.rank{width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0;}
+.avatar{width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;flex-shrink:0;}
+.donor-info{flex:1;min-width:0;}
+.donor-name{font-size:14px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.donor-sub{font-size:12px;color:#888;margin-top:2px;}
+.blood-badge{padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600;white-space:nowrap;flex-shrink:0;}
+.chevron{font-size:12px;color:#aaa;flex-shrink:0;transition:transform 0.2s;}
+.chevron.open{transform:rotate(180deg);}
+
+/* Expandable details */
+.donor-details{display:none;padding:0 16px 14px 16px;border-top:1px solid #f0f0f0;}
+.donor-details.open{display:block;}
+.detail-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px;}
+.detail-item{background:#f8f8f8;border-radius:8px;padding:8px 12px;}
+.detail-label{font-size:10px;color:#999;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:2px;}
+.detail-value{font-size:13px;font-weight:500;color:#1a1a1a;}
+.role-badge{display:inline-block;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600;margin-bottom:10px;}
+
+.sms-pill{display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:500;background:#e1f5ee;color:#0f6e56;border:1px solid #5dcaa5;}
+.meta{display:flex;align-items:center;gap:10px;margin-bottom:1rem;}
+.back-btn{font-size:13px;padding:6px 14px;background:#fff;border:1px solid #ddd;border-radius:8px;cursor:pointer;}
+.back-btn:hover{background:#f5f5f5;}
+.req-id{font-size:11px;color:#aaa;text-align:center;margin-top:1rem;}
+.spinner{width:16px;height:16px;border:2px solid rgba(255,255,255,0.3);border-top-color:#fff;border-radius:50%;animation:spin 0.7s linear infinite;display:inline-block;vertical-align:middle;margin-right:8px;}
+@keyframes spin{to{transform:rotate(360deg);}}
+.selected-info{font-size:12px;color:#888;margin-bottom:12px;padding:8px 12px;background:#f9f9f9;border-radius:8px;}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="header">
+    <div class="logo">🩸</div>
+    <h1>Blood Warriors</h1>
+    <p class="subtitle">Real-time donor matching · Instant SMS outreach</p>
+  </div>
+
+  <div id="search-panel" class="card">
+    <label for="patient-select">Select patient</label>
+    <select id="patient-select" onchange="onSelectChange()">
+      <option value="">— choose a patient —</option>
+      <option value="\x01b2c21464493c92a34606461dc52ef3b1873a063ec37e301fa21e30ccd4c72c" data-bg="B Positive">Patient 01 · B Positive</option>
+      <option value="\x391d6e2c80fa649736f2098c8a2eb40aaac349ad71d82ce62ca31ce84d60224b" data-bg="O Positive">Patient 02 · O Positive</option>
+      <option value="\x9b10db6fa9c465900c05a42198599e31513322c236ca57f5551fb9f5c678b023" data-bg="B Positive">Patient 03 · B Positive</option>
+      <option value="\xb5c5f85b76f8b977f786ba1a108e3765bbac7187bd5a643e5a0cea8322cdb132" data-bg="O Positive">Patient 04 · O Positive</option>
+      <option value="\x8abc7f68ab57313c0d0894f647c192fd2d256acfbaf2113536f654b6f05a2c60" data-bg="O Positive">Patient 05 · O Positive</option>
+      <option value="\xed2f0bee185811fbbdae51dba97b193007cb0fede14ff95ebbc423f551e49aa8" data-bg="O Positive">Patient 06 · O Positive</option>
+      <option value="\x452d68652c38799374d5f99c267db66fe4e53acf7f06fd23363b0780235c5e16" data-bg="O Positive">Patient 07 · O Positive</option>
+      <option value="\x0ac5f0e95fd652508ceacd9b8558bee7f8cd98a2591547e33e09f035ead0b35c" data-bg="AB Positive">Patient 08 · AB Positive</option>
+      <option value="\x333db5092ce6f90981b07559cde5c220f68df96e9f28e5165c807ff47a20950a" data-bg="O Positive">Patient 09 · O Positive</option>
+      <option value="\x1cc5e18b08ed54074436f2f6ef697039661f007257bcf22709a27943d10c9860" data-bg="O Positive">Patient 10 · O Positive</option>
+      <option value="\xad2e199f5653f9217d239465b2b8ea1b41e177ac3ec89e918902825049c0f4e5" data-bg="B Positive">Patient 11 · B Positive</option>
+      <option value="\xe6de6430c869125448095a83d9823817a85cb04e526498841cbacc0387dcd39d" data-bg="B Positive">Patient 12 · B Positive</option>
+      <option value="\x01655e834381eb6cccfb9e82771f26a7c3c931632516fb7da2bda4df1edf4bf0" data-bg="B Positive">Patient 13 · B Positive</option>
+      <option value="\x7898142e4378bd31f3ac52547cf43823f252d0b48ca69d70f942b3ee98f8183a" data-bg="B Positive">Patient 14 · B Positive</option>
+      <option value="\x2c5a16fbb933bfdef50ad60082408bc441f22340c6b4218ad53dfc9ccd796a25" data-bg="O Positive">Patient 15 · O Positive</option>
+      <option value="\xb06c96406eaea1781b7e4b4a491fad17a2645780c1642e27af4cf75fc3b8cd19" data-bg="B Positive">Patient 16 · B Positive</option>
+      <option value="\xf385f2fe255613df41bf5ec40886354c4330fcd3f742deb64153fb9395b46997" data-bg="O Positive">Patient 17 · O Positive</option>
+      <option value="\x86aa4970617b67de70b2dbe24d63f2d5bfc547707cf9728510bf267db5e43ac3" data-bg="O Positive">Patient 18 · O Positive</option>
+      <option value="\xe6c10bc2752116c262fdecd89a72570d9cac9e67a8d89eae4dbcaa3c969257a7" data-bg="B Positive">Patient 19 · B Positive</option>
+      <option value="\x692335e877e36eecf3ead7c45bd7f78d30c46dd75ee51e8b66765c27d120130e" data-bg="B Positive">Patient 20 · B Positive</option>
+    </select>
+    <div class="selected-info" id="selected-info" style="display:none;"></div>
+    <div class="err" id="err" style="display:none;"></div>
+    <button class="btn" id="match-btn" onclick="runMatch()">Find top donors →</button>
+  </div>
+
+  <div id="results-panel" style="display:none;">
+    <div class="meta">
+      <div style="flex:1;">
+        <div style="font-size:13px;color:#888;" id="patient-lbl"></div>
+        <div style="display:flex;align-items:center;gap:8px;margin-top:5px;">
+          <span class="blood-badge" id="bg-badge"></span>
+          <span class="sms-pill" id="sms-pill" style="display:none;">📱 SMS sent to donors</span>
+        </div>
+      </div>
+      <button class="back-btn" onclick="reset()">← New search</button>
+    </div>
+    <div class="stats" id="stats-row"></div>
+    <div id="donor-list"></div>
+    <div class="req-id" id="req-id"></div>
+  </div>
+</div>
+
+<script>
+const API = 'https://046giqhktg.execute-api.ap-south-1.amazonaws.com/prod/match';
+
+const BG_STYLES = {
+  'O Negative':  {bg:'#FCEBEB',color:'#791F1F',border:'#F09595'},
+  'O Positive':  {bg:'#FCEBEB',color:'#791F1F',border:'#F09595'},
+  'A Negative':  {bg:'#FAEEDA',color:'#633806',border:'#EF9F27'},
+  'A Positive':  {bg:'#FAEEDA',color:'#633806',border:'#EF9F27'},
+  'B Negative':  {bg:'#E6F1FB',color:'#0C447C',border:'#85B7EB'},
+  'B Positive':  {bg:'#E6F1FB',color:'#0C447C',border:'#85B7EB'},
+  'AB Negative': {bg:'#EEEDFE',color:'#3C3489',border:'#AFA9EC'},
+  'AB Positive': {bg:'#EEEDFE',color:'#3C3489',border:'#AFA9EC'},
+};
+
+const ROLE_STYLES = {
+  'Emergency Donor': {bg:'#FCEBEB',color:'#791F1F'},
+  'Bridge Donor':    {bg:'#E6F1FB',color:'#0C447C'},
+  'Regular Donor':   {bg:'#E1F5EE',color:'#0F6E56'},
+  'Volunteer':       {bg:'#EEEDFE',color:'#3C3489'},
+};
+
+function bgStyle(g){return BG_STYLES[g]||{bg:'#f5f5f5',color:'#444',border:'#ccc'};}
+function roleStyle(r){return ROLE_STYLES[r]||{bg:'#f5f5f5',color:'#555'};}
+
+function scoreRing(score){
+  const r=20,cx=26,cy=26,circ=2*Math.PI*r,dash=(score/100)*circ;
+  const col=score>=70?'#1D9E75':score>=45?'#BA7517':'#A32D2D';
+  return `<svg width="52" height="52" style="flex-shrink:0;">
+    <circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="#eee" stroke-width="4"/>
+    <circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${col}" stroke-width="4"
+      stroke-dasharray="${dash.toFixed(1)} ${(circ-dash).toFixed(1)}"
+      stroke-dashoffset="${(circ/4).toFixed(1)}" stroke-linecap="round"/>
+    <text x="${cx}" y="${cy+5}" text-anchor="middle" font-size="11" font-weight="700" fill="${col}">${Math.round(score)}</text>
+  </svg>`;
+}
+
+function onSelectChange(){
+  const sel = document.getElementById('patient-select');
+  const opt = sel.options[sel.selectedIndex];
+  const info = document.getElementById('selected-info');
+  if(sel.value){
+    const bg = opt.getAttribute('data-bg');
+    const c = bgStyle(bg);
+    info.style.display='block';
+    info.innerHTML=`Blood group needed: <strong style="color:${c.color}">${bg}</strong>`;
+  } else {
+    info.style.display='none';
+  }
+}
+
+function toggleDonor(i){
+  const details = document.getElementById('details-'+i);
+  const chevron = document.getElementById('chevron-'+i);
+  const isOpen = details.classList.contains('open');
+  details.classList.toggle('open', !isOpen);
+  chevron.classList.toggle('open', !isOpen);
+}
+
+async function runMatch(){
+  const sel = document.getElementById('patient-select');
+  const pid = sel.value;
+  const err = document.getElementById('err');
+  if(!pid){err.textContent='Please select a patient.';err.style.display='block';return;}
+  err.style.display='none';
+  const btn = document.getElementById('match-btn');
+  btn.disabled=true;
+  btn.innerHTML='<span class="spinner"></span>Finding donors…';
+  try{
+    const res = await fetch(API,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({patient_id:pid})});
+    const data = await res.json();
+    const body = typeof data.body==='string'?JSON.parse(data.body):data;
+    if(body.error) throw new Error(body.error);
+    showResults(body, sel.options[sel.selectedIndex].text);
+  }catch(e){
+    err.textContent=e.message||'Request failed.';
+    err.style.display='block';
+    btn.disabled=false;
+    btn.innerHTML='Find top donors →';
+  }
+}
+
+function showResults(data, patientLabel){
+  document.getElementById('search-panel').style.display='none';
+  document.getElementById('results-panel').style.display='block';
+  document.getElementById('patient-lbl').textContent=patientLabel;
+
+  const bg=data.patient_blood_group||'';
+  const c=bgStyle(bg);
+  const badge=document.getElementById('bg-badge');
+  badge.textContent=bg;
+  Object.assign(badge.style,{background:c.bg,color:c.color,border:`1px solid ${c.border}`});
+  document.getElementById('sms-pill').style.display='inline-flex';
+
+  const donors=data.top_donors||[];
+  const top=donors[0]||{};
+
+  document.getElementById('stats-row').innerHTML=[
+    {label:'Donors matched',val:donors.length},
+    {label:'Top score',val:top.score?top.score.toFixed(1):'—'},
+    {label:'Nearest',val:top.distance_km!==undefined?top.distance_km+' km':'—'},
+  ].map(s=>`<div class="stat"><div class="stat-val">${s.val}</div><div class="stat-lbl">${s.label}</div></div>`).join('');
+
+  const rankColors=[
+    {bg:'#EF9F27',c:'#412402'},
+    {bg:'#C0C0C0',c:'#2C2C2A'},
+    {bg:'#CD7F32',c:'#3a1f00'},
+  ];
+
+  document.getElementById('donor-list').innerHTML = donors.map((d,i)=>{
+    const dc = bgStyle(d.blood_group);
+    const rk = rankColors[i]||{bg:'#f0f0f0',c:'#888'};
+    const rs = roleStyle(d.role||d.donor_type);
+    const role = d.role || d.donor_type || 'Donor';
+    const eligColor = d.eligibility_status==='eligible'?'#0f6e56':'#a32d2d';
+
+    return `<div class="donor-wrap" id="dw-${i}">
+      <div class="donor-card" onclick="toggleDonor(${i})">
+        <div class="rank" style="background:${rk.bg};color:${rk.c};">${i+1}</div>
+        <div class="avatar" style="background:${dc.bg};border:1px solid ${dc.border};color:${dc.color};">#${i+1}</div>
+        <div class="donor-info">
+          <div class="donor-name">${role}</div>
+          <div class="donor-sub">${d.distance_km} km · ${d.donations_till_date} donations · ratio ${d.calls_to_donations_ratio}</div>
+        </div>
+        <span class="blood-badge" style="background:${dc.bg};color:${dc.color};border:1px solid ${dc.border};">${d.blood_group}</span>
+        ${scoreRing(d.score)}
+        <span class="chevron" id="chevron-${i}">▼</span>
+      </div>
+      <div class="donor-details" id="details-${i}">
+        <span class="role-badge" style="background:${rs.bg};color:${rs.color};">${role}</span>
+        <div class="detail-grid">
+          <div class="detail-item">
+            <div class="detail-label">Blood group</div>
+            <div class="detail-value">${d.blood_group||'—'}</div>
+          </div>
+          <div class="detail-item">
+            <div class="detail-label">Donor type</div>
+            <div class="detail-value">${d.donor_type||'—'}</div>
+          </div>
+          <div class="detail-item">
+            <div class="detail-label">Total donations</div>
+            <div class="detail-value">${d.donations_till_date||'0'}</div>
+          </div>
+          <div class="detail-item">
+            <div class="detail-label">Call/donation ratio</div>
+            <div class="detail-value">${d.calls_to_donations_ratio||'—'}</div>
+          </div>
+          <div class="detail-item">
+            <div class="detail-label">Distance</div>
+            <div class="detail-value">${d.distance_km} km</div>
+          </div>
+          <div class="detail-item">
+            <div class="detail-label">Match score</div>
+            <div class="detail-value">${d.score}/100</div>
+          </div>
+          <div class="detail-item">
+            <div class="detail-label">Eligibility</div>
+            <div class="detail-value" style="color:${eligColor};">${d.eligibility_status||'—'}</div>
+          </div>
+          <div class="detail-item">
+            <div class="detail-label">Last donation</div>
+            <div class="detail-value">${d.last_donation_date||'N/A'}</div>
+          </div>
+          <div class="detail-item">
+            <div class="detail-label">Next eligible</div>
+            <div class="detail-value">${d.next_eligible_date||'N/A'}</div>
+          </div>
+          <div class="detail-item">
+            <div class="detail-label">Gender</div>
+            <div class="detail-value">${d.gender||'—'}</div>
+          </div>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+
+  document.getElementById('req-id').textContent='Request · '+(data.request_id||'');
+  donors.forEach((_,i)=>setTimeout(()=>{
+    const el=document.getElementById('dw-'+i);
+    if(el) el.classList.add('show');
+  },i*90));
+}
+
+function reset(){
+  document.getElementById('results-panel').style.display='none';
+  document.getElementById('search-panel').style.display='block';
+  document.getElementById('patient-select').value='';
+  document.getElementById('selected-info').style.display='none';
+  document.getElementById('sms-pill').style.display='none';
+  const btn=document.getElementById('match-btn');
+  btn.disabled=false;
+  btn.innerHTML='Find top donors →';
+}
+</script>
+</body>
+</html>
