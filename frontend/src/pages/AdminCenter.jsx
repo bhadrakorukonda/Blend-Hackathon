@@ -431,6 +431,32 @@ export default function AdminCenter() {
             <HesitationCard hesitationBreakdown={hb} intentCounts={ic} />
           </div>
 
+          {/* Human review — flagged conversations needing coordinator attention */}
+          {(data.human_escalation_count || 0) > 0 && (
+            <div className="bg-[#1a0e0e] border border-red-500/40 rounded-xl overflow-hidden mb-4">
+              <div className="px-5 py-4 border-b border-red-500/20 flex items-center justify-between">
+                <div>
+                  <div className="text-[12px] font-mono tracking-widest text-red-400 font-bold">⚠ REQUIRES HUMAN REVIEW</div>
+                  <div className="text-[10px] font-mono text-[#a06060] mt-1">bot flagged these for coordinator attention</div>
+                </div>
+                <span className="text-[11px] font-mono px-3 py-1 rounded-full bg-red-500/15 text-red-400 font-bold">
+                  {data.human_escalation_count}
+                </span>
+              </div>
+              <div className="divide-y divide-red-500/10">
+                {(data.human_escalations || []).map((esc) => (
+                  <div key={esc.request_id} className="px-5 py-3 flex items-start gap-4">
+                    <span className="font-mono text-[11px] text-[#c08080] shrink-0">
+                      {esc.request_id.slice(0, 8).toUpperCase()}…
+                    </span>
+                    <span className="font-mono text-[12px] text-[#e0c0c0] flex-1">"{esc.message}"</span>
+                    <span className="font-mono text-[10px] text-[#a06060] shrink-0">{timeAgo(esc.created_at)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Live requests table */}
           <div className="bg-[#0b0b1e] border border-[#1a1a38] rounded-xl overflow-hidden">
             <div className="px-5 py-4 border-b border-[#12123a]">

@@ -23,14 +23,33 @@ def lambda_handler(event, context):
 
     items.sort(key=lambda x: x.get('created_at', ''), reverse=True)
 
-    status_counts     = Counter(i.get('status', 'unknown') for i in items)
+    status_counts      = Counter(i.get('status', 'unknown') for i in items)
     blood_group_counts = Counter(i.get('patient_blood_group', 'Unknown') for i in items)
 
-    intent_counts = Counter()
+    intent_counts  = Counter()
+    decline_counts = Counter()
+
+    human_escalation_count = 0
+    human_escalations      = []
+
     for item in items:
         dr = item.get('donor_response')
         if dr and isinstance(dr, dict):
             intent_counts[dr.get('intent', 'UNKNOWN')] += 1
+
+        # decline_reason is written at the top-level of the MatchRequest item
+        # (set when intent=NO and a reason was detected)
+        reason = item.get('decline_reason')
+        if reason:
+            decline_counts[reason] += 1
+
+        if item.get('human_escalation_flag') is True:
+            human_escalation_count += 1
+            human_escalations.append({
+                'request_id': str(item.get('request_id', '')),
+                'message':    str(item.get('human_escalation_reason', '')),
+                'created_at': str(item.get('created_at', '')),
+            })
 
     total        = len(items)
     confirmed    = status_counts.get('confirmed', 0)
@@ -38,6 +57,10 @@ def lambda_handler(event, context):
 
     total_escalations = sum(int(i.get('escalation_count', 0)) for i in items)
     avg_escalations   = round(total_escalations / total, 2) if total > 0 else 0
+
+    # Hesitation breakdown: count HESITANT_LOGISTICS and HESITANT_AWARE intents
+    hesitation_logistics = intent_counts.get('HESITANT_LOGISTICS', 0)
+    hesitation_aware     = intent_counts.get('HESITANT_AWARE', 0)
 
     requests = []
     for item in items:
@@ -51,16 +74,25 @@ def lambda_handler(event, context):
             'last_outreach_at':    str(item.get('last_outreach_at', '')),
             'responded_at':        str(item.get('responded_at', '')),
             'donor_response':      item.get('donor_response'),
+            'decline_reason':      item.get('decline_reason'),
         })
 
     result = {
-        'total':              total,
-        'success_rate':       success_rate,
-        'avg_escalations':    avg_escalations,
-        'status_counts':      dict(status_counts),
-        'intent_counts':      dict(intent_counts),
-        'blood_group_demand': dict(blood_group_counts),
-        'requests':           requests,
+        'total':               total,
+        'success_rate':        success_rate,
+        'avg_escalations':     avg_escalations,
+        'status_counts':       dict(status_counts),
+        'intent_counts':       dict(intent_counts),
+        'blood_group_demand':  dict(blood_group_counts),
+        # --- new fields ---
+        'decline_reasons':     dict(decline_counts),
+        'hesitation_breakdown': {
+            'logistics': hesitation_logistics,
+            'awareness': hesitation_aware,
+        },
+        'human_escalation_count': human_escalation_count,
+        'human_escalations':      human_escalations,
+        'requests':            requests,
     }
 
     return {

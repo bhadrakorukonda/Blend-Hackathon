@@ -23,11 +23,28 @@ TWILIO_WHATSAPP_FROM = os.environ.get('TWILIO_WHATSAPP_FROM', '')
 
 QUESTION_WORDS = {'when', 'where', 'what', 'how', 'time', 'tomorrow', 'available', 'which', 'why'}
 
+# --- Hesitation sub-types ---
+# HESITANT_LOGISTICS: donor is willing but has a practical barrier (transport, location, timing)
+# HESITANT_AWARE: donor is unsure what blood donation involves (safety, process, eligibility)
+HESITATION_TYPES = {'HESITANT_LOGISTICS', 'HESITANT_AWARE'}
+
+# Targeted follow-up messages when AI generation fails
+LOGISTICS_FALLBACK = (
+    "Blood Warriors: The donation centre is at Care Hospital, Banjara Hills. "
+    "We can arrange a cab if needed. Reply YES and we will coordinate!"
+)
+AWARE_FALLBACK = (
+    "Blood Warriors: Donation takes 10 mins, is completely safe, and you are eligible. "
+    "Your gift saves a life. Reply YES — we will guide you through every step."
+)
+
 HARDCODED_REPLIES = {
     'YES': "Blood Warriors: Thank you! Your confirmation is recorded. A coordinator will be in touch shortly.",
     'NO':  "Blood Warriors: Understood. We will reach the next matched donor. Thank you for letting us know.",
 }
 MAYBE_FALLBACK = "Blood Warriors: Got it. If you become available, reply YES at any time. Thank you."
+
+FLAGGED_HUMAN_REPLY = "Blood Warriors: Thank you for reaching out. A coordinator will be in touch with you shortly."
 
 
 def is_question(text):
@@ -47,9 +64,22 @@ def get_bot_session(phone):
 
 def classify_intent_and_language(text, history):
     """
-    Single Bedrock call: classify intent (YES/NO/MAYBE) and detect language.
-    Returns (intent, language_code).
-    Supports Hindi, Telugu, Tamil, Kannada, Malayalam, and other Indian languages.
+    Single Bedrock call: classify intent and detect language.
+
+    Intent values:
+      YES               — donor agrees or confirms
+      NO                — donor declines
+      MAYBE             — uncertain or conditional
+      HESITANT_LOGISTICS — willing but has a practical barrier (transport, location, timing, hospital)
+      HESITANT_AWARE    — unsure about safety, process, eligibility, or what donation involves
+      FLAGGED_HUMAN     — abuse, hostility, distress, mental health signals, medical emergency,
+                          or too ambiguous to handle autonomously — needs human coordinator review
+
+    Also returns:
+      decline_reason (only meaningful when intent=NO):
+        TRANSPORT | TIMING | HEALTH | AWARENESS | OTHER
+
+    Returns: (intent, language_code, decline_reason)
     """
     history_block = ''
     if history:
@@ -57,19 +87,37 @@ def classify_intent_and_language(text, history):
         history_block = "Conversation so far:\n" + "\n".join(lines) + "\n\n"
 
     prompt = (
-        "You are classifying a blood donor's WhatsApp reply for Blood Warriors, an NGO.\n"
-        "The donor may reply in ANY Indian language including Hindi, Telugu, Tamil, "
-        "Kannada, Malayalam, Bengali, Marathi, Gujarati, or English.\n"
-        "Classify the intent regardless of language.\n\n"
+        "You are classifying a blood donor's WhatsApp reply for Blood Warriors, an NGO in Hyderabad.\n"
+        "The donor may reply in ANY Indian language: Hindi, Telugu, Tamil, Kannada, Malayalam, Bengali, Marathi, Gujarati, or English.\n\n"
         f"{history_block}"
         f"Latest donor message: \"{text}\"\n\n"
-        "Intent definitions:\n"
-        "  YES   = donor agrees, confirms, or says they are available\n"
-        "  NO    = donor declines, says unavailable, or refuses\n"
-        "  MAYBE = donor is uncertain, asks a question, or gives a conditional answer\n\n"
-        "Also detect the language. Language codes: en hi te ta kn ml bn mr gu other\n\n"
-        "Respond with EXACTLY two tokens on one line: <INTENT> <LANG_CODE>\n"
-        "Examples: 'YES en'  'MAYBE hi'  'NO te'  'MAYBE ta'\n"
+        "INTENT — pick exactly one:\n"
+        "  YES                = donor agrees, confirms, or says they are available\n"
+        "  NO                 = donor declines or says unavailable\n"
+        "  MAYBE              = uncertain, conditional, gives no clear signal\n"
+        "  HESITANT_LOGISTICS = donor is willing BUT has a practical barrier "
+        "(e.g. no transport, asks which hospital, asks for address, timing conflict, asks about location)\n"
+        "  HESITANT_AWARE     = donor unsure about what donation involves "
+        "(e.g. asks if it is safe, how long it takes, will it hurt, asks about eligibility, blood loss)\n"
+        "  FLAGGED_HUMAN      = reply contains abuse, hostility, distress, mental health signals, "
+        "medical emergency, or is too ambiguous to handle autonomously — a human coordinator must review\n\n"
+        "DECLINE_REASON — only when intent is NO, pick one:\n"
+        "  TRANSPORT  = no vehicle or travel issue\n"
+        "  TIMING     = busy, wrong time, schedule conflict\n"
+        "  HEALTH     = unwell, on medication, health concern\n"
+        "  AWARENESS  = does not understand why blood is needed or what is involved\n"
+        "  OTHER      = any other reason or unspecified\n\n"
+        "LANG — language code: en hi te ta kn ml bn mr gu other\n\n"
+        "Respond with EXACTLY one line in this format:\n"
+        "<INTENT> <LANG> <DECLINE_REASON>\n"
+        "If intent is not NO, use NONE for DECLINE_REASON. FLAGGED_HUMAN always uses NONE.\n\n"
+        "Examples:\n"
+        "  YES en NONE\n"
+        "  NO te TIMING\n"
+        "  HESITANT_LOGISTICS en NONE\n"
+        "  HESITANT_AWARE hi NONE\n"
+        "  MAYBE en NONE\n"
+        "  FLAGGED_HUMAN en NONE\n"
         "Response:"
     )
     body = json.dumps({
@@ -85,24 +133,45 @@ def classify_intent_and_language(text, history):
         )
         raw = json.loads(resp['body'].read())['content'][0]['text'].strip().upper()
         parts = raw.split()
-        intent   = 'MAYBE'
-        language = 'en'
-        for word in ('YES', 'NO', 'MAYBE'):
+
+        intent         = 'MAYBE'
+        language       = 'en'
+        decline_reason = 'OTHER'
+
+        valid_intents = {'YES', 'NO', 'MAYBE', 'HESITANT_LOGISTICS', 'HESITANT_AWARE', 'FLAGGED_HUMAN'}
+        valid_reasons = {'TRANSPORT', 'TIMING', 'HEALTH', 'AWARENESS', 'OTHER', 'NONE'}
+
+        for word in valid_intents:
             if word in parts:
                 intent = word
                 break
+
+        # language is always the second token in our format
         if len(parts) >= 2:
             language = parts[1].lower()
-        logger.info(f"Bedrock classification | intent={intent} lang={language} raw='{raw}'")
-        return intent, language
+
+        # decline_reason is the third token
+        if len(parts) >= 3 and parts[2] in valid_reasons:
+            decline_reason = parts[2] if parts[2] != 'NONE' else None
+        else:
+            decline_reason = None
+
+        logger.info(f"Bedrock classification | intent={intent} lang={language} decline_reason={decline_reason} raw='{raw}'")
+        return intent, language, decline_reason
+
     except Exception as e:
         logger.error(f"Bedrock classification failed: {e}")
-        return 'MAYBE', 'en'
+        return 'MAYBE', 'en', None
 
 
 def generate_conversational_reply(text, intent, language, history, donor_info, patient_blood_grp):
     """
-    Second Bedrock call: generate a warm, context-aware reply for MAYBE or question messages.
+    Second Bedrock call: generate a warm, context-aware reply.
+
+    For HESITANT_LOGISTICS: directly answer the logistical question (address, transport offer).
+    For HESITANT_AWARE: reassure about safety/process, answer the specific concern.
+    For MAYBE or general questions: acknowledge warmly and encourage YES.
+
     Replies in the donor's detected language. Returns string <= 160 chars, or None on failure.
     """
     history_block = ''
@@ -133,6 +202,28 @@ def generate_conversational_reply(text, intent, language, history, donor_info, p
         else "Reply in English."
     )
 
+    # Tailored instruction based on hesitation type
+    if intent == 'HESITANT_LOGISTICS':
+        task_instruction = (
+            "The donor is willing but has a PRACTICAL BARRIER (transport, location, timing). "
+            "Directly address their concern: give the donation centre address (Care Hospital, Banjara Hills, Hyderabad), "
+            "offer transport coordination, or clarify timing. Be specific and helpful. "
+            "End with encouragement to reply YES."
+        )
+    elif intent == 'HESITANT_AWARE':
+        task_instruction = (
+            "The donor is unsure about what blood donation involves. "
+            "Reassure them directly: donation takes 10 minutes, is completely safe, "
+            "no pain beyond a small prick, full recovery in minutes, "
+            "and they are already verified eligible. "
+            "Answer their specific concern if possible. End with encouragement to reply YES."
+        )
+    else:
+        task_instruction = (
+            "If the donor asked a question, answer it using the facts above. "
+            "If MAYBE, acknowledge warmly and encourage them to reply YES when ready."
+        )
+
     prompt = (
         "You represent Blood Warriors, a blood donation NGO in Hyderabad, India.\n"
         "A donor replied to an urgent blood donation request. Write a warm, helpful WhatsApp reply.\n"
@@ -142,8 +233,7 @@ def generate_conversational_reply(text, intent, language, history, donor_info, p
         f"Classified intent: {intent}\n"
         f"Patient urgently needs: {patient_blood_grp} blood\n"
         f"{donor_facts}\n\n"
-        "If the donor asked a question, answer it using the facts above. "
-        "If MAYBE, acknowledge warmly and encourage them to reply YES when ready.\n"
+        f"{task_instruction}\n"
         "Response:"
     )
     body = json.dumps({
@@ -231,9 +321,9 @@ def lambda_handler(event, context):
     # Pass last 5 turns to Bedrock for context
     recent_history = conv_history[-5:]
 
-    # --- Classify intent + detect language (single Bedrock call) ---
-    intent, language = classify_intent_and_language(reply_text, recent_history)
-    logger.info(f"Intent: {intent} | Language: {language} | Message: '{reply_text}'")
+    # --- Classify intent + detect language + get decline reason (single Bedrock call) ---
+    intent, language, decline_reason = classify_intent_and_language(reply_text, recent_history)
+    logger.info(f"Intent: {intent} | Language: {language} | Decline reason: {decline_reason} | Message: '{reply_text}'")
 
     # --- Find active match request ---
     match_request = get_latest_pending_request()
@@ -247,30 +337,60 @@ def lambda_handler(event, context):
     patient_blood_grp = match_request.get('patient_blood_group', 'Unknown')
     donor_info        = get_donor_info_from_request(match_request)
 
-    # --- Update MatchRequests ---
-    new_status = {'YES': 'confirmed', 'NO': 'escalate', 'MAYBE': 'awaiting'}[intent]
+    # --- Map intent to MatchRequest status ---
+    # Hesitation types keep the request in 'awaiting' — the bot is actively trying to convert
+    status_map = {
+        'YES':                 'confirmed',
+        'NO':                  'escalate',
+        'MAYBE':               'awaiting',
+        'HESITANT_LOGISTICS':  'awaiting',
+        'HESITANT_AWARE':      'awaiting',
+        'FLAGGED_HUMAN':       'awaiting',
+    }
+    new_status = status_map.get(intent, 'awaiting')
+
+    # --- Build update expression — include decline_reason only when NO ---
     try:
+        update_expr   = 'SET #s = :status, donor_response = :dr, responded_at = :ts'
+        expr_names    = {'#s': 'status'}
+        expr_values   = {
+            ':status': new_status,
+            ':dr': {
+                'phone':          from_phone,
+                'intent':         intent,
+                'message':        reply_text,
+                'decline_reason': decline_reason,
+            },
+            ':ts': now,
+        }
+        if decline_reason:
+            update_expr += ', decline_reason = :dcr'
+            expr_values[':dcr'] = decline_reason
+
+        # FLAGGED_HUMAN: freeze for human review — do not advance to next donor
+        if intent == 'FLAGGED_HUMAN':
+            update_expr += ', human_escalation_flag = :hef, human_escalation_reason = :her'
+            expr_values[':hef'] = True
+            expr_values[':her'] = reply_text
+
         match_requests_table.update_item(
             Key={'request_id': request_id},
-            UpdateExpression='SET #s = :status, donor_response = :dr, responded_at = :ts',
-            ExpressionAttributeNames={'#s': 'status'},
-            ExpressionAttributeValues={
-                ':status': new_status,
-                ':dr': {'phone': from_phone, 'intent': intent, 'message': reply_text},
-                ':ts': now,
-            }
+            UpdateExpression=update_expr,
+            ExpressionAttributeNames=expr_names,
+            ExpressionAttributeValues=expr_values,
         )
-        logger.info(f"MatchRequest {request_id[:8]} -> status={new_status}")
+        logger.info(f"MatchRequest {request_id[:8]} -> status={new_status} decline_reason={decline_reason}")
     except Exception as e:
         logger.error(f"MatchRequests update failed: {e}")
 
     # --- Append turn to conversation history ---
     conv_history.append({
-        'role':      'donor',
-        'message':   reply_text,
-        'intent':    intent,
-        'language':  language,
-        'timestamp': now,
+        'role':           'donor',
+        'message':        reply_text,
+        'intent':         intent,
+        'language':       language,
+        'decline_reason': decline_reason,
+        'timestamp':      now,
     })
 
     # --- Upsert BotSession with full conversation_history ---
@@ -281,6 +401,7 @@ def lambda_handler(event, context):
             'last_message':         reply_text,
             'intent':               intent,
             'language':             language,
+            'decline_reason':       decline_reason,
             'message_sid':          message_sid,
             'updated_at':           now,
             'conversation_history': json.dumps(conv_history),
@@ -301,7 +422,7 @@ def lambda_handler(event, context):
                     UpdateExpression='SET last_contacted_date = :today',
                     ExpressionAttributeValues={':today': date.today().isoformat()}
                 )
-                logger.info(f"Re-rank: last_contacted_date={date.today()} for donor {donor_id[:16]} (said NO)")
+                logger.info(f"Re-rank: last_contacted_date={date.today()} for donor {donor_id[:16]} (said NO, reason={decline_reason})")
         except Exception as e:
             logger.error(f"Re-rank update failed: {e}")
 
@@ -311,8 +432,12 @@ def lambda_handler(event, context):
     if intent in HARDCODED_REPLIES:
         return twiml(HARDCODED_REPLIES[intent])
 
-    # MAYBE or question: generate context-aware AI reply
-    if (intent == 'MAYBE') or is_question(reply_text):
+    # FLAGGED_HUMAN: graceful hold reply, no AI generation — coordinator takes over
+    if intent == 'FLAGGED_HUMAN':
+        return twiml(FLAGGED_HUMAN_REPLY)
+
+    # Hesitation or MAYBE: generate targeted AI reply
+    if intent in HESITATION_TYPES or intent == 'MAYBE' or is_question(reply_text):
         ai_reply = generate_conversational_reply(
             text=reply_text,
             intent=intent,
@@ -323,5 +448,10 @@ def lambda_handler(event, context):
         )
         if ai_reply:
             return twiml(ai_reply)
+        # Targeted fallbacks if AI fails
+        if intent == 'HESITANT_LOGISTICS':
+            return twiml(LOGISTICS_FALLBACK)
+        if intent == 'HESITANT_AWARE':
+            return twiml(AWARE_FALLBACK)
 
     return twiml(MAYBE_FALLBACK)
