@@ -5,6 +5,8 @@ import os
 import uuid
 from datetime import datetime, date
 from urllib.parse import parse_qs
+import urllib.request
+import urllib.error
 import base64
 
 logger = logging.getLogger()
@@ -20,6 +22,7 @@ BEDROCK_MODEL        = 'anthropic.claude-3-haiku-20240307-v1:0'
 TWILIO_ACCOUNT_SID   = os.environ.get('TWILIO_ACCOUNT_SID', '')
 TWILIO_AUTH_TOKEN    = os.environ.get('TWILIO_AUTH_TOKEN', '')
 TWILIO_WHATSAPP_FROM = os.environ.get('TWILIO_WHATSAPP_FROM', '')
+TWILIO_WHATSAPP_TO   = os.environ.get('TWILIO_WHATSAPP_TO', '')
 
 QUESTION_WORDS = {'when', 'where', 'what', 'how', 'time', 'tomorrow', 'available', 'which', 'why'}
 
@@ -282,6 +285,53 @@ def get_latest_pending_request():
     return items[0]
 
 
+def send_whatsapp(to, body):
+    url = f'https://api.twilio.com/2010-04-01/Accounts/{TWILIO_ACCOUNT_SID}/Messages.json'
+    data = urllib.parse.urlencode({
+        'From': TWILIO_WHATSAPP_FROM,
+        'To':   to,
+        'Body': body,
+    }).encode('utf-8')
+    credentials = base64.b64encode(
+        f'{TWILIO_ACCOUNT_SID}:{TWILIO_AUTH_TOKEN}'.encode()
+    ).decode()
+    req = urllib.request.Request(
+        url, data=data,
+        headers={
+            'Authorization': f'Basic {credentials}',
+            'Content-Type':  'application/x-www-form-urlencoded',
+        },
+        method='POST',
+    )
+    try:
+        with urllib.request.urlopen(req) as resp:
+            return json.loads(resp.read())
+    except urllib.error.HTTPError as e:
+        err_body = e.read().decode('utf-8', errors='replace')
+        logger.error(f"Twilio HTTP {e.code}: {err_body}")
+        raise
+
+
+def notify_coordinator(request_id, donor_info, patient_blood_group):
+    donor_name  = donor_info.get('name', 'A donor')
+    donor_blood = donor_info.get('blood_group', patient_blood_group)
+    distance    = donor_info.get('distance_km', 0)
+    donations   = donor_info.get('donations_till_date', 0)
+
+    message = (
+        f"Blood Warriors: CONFIRMED. {donor_name} ({donor_blood}, "
+        f"{donations} lifetime donations, {distance}km away) has confirmed "
+        f"for request {request_id[:8].upper()}. "
+        f"Please coordinate hospital visit. Request ID: {request_id[:8].upper()}"
+    )
+
+    if not TWILIO_WHATSAPP_TO or not TWILIO_ACCOUNT_SID or not TWILIO_AUTH_TOKEN:
+        logger.warning("Twilio coordinator notification skipped — credentials or TWILIO_WHATSAPP_TO not set")
+        return
+
+    send_whatsapp(TWILIO_WHATSAPP_TO, message)
+
+
 def twiml(message):
     xml = (
         '<?xml version="1.0" encoding="UTF-8"?>'
@@ -382,6 +432,14 @@ def lambda_handler(event, context):
         logger.info(f"MatchRequest {request_id[:8]} -> status={new_status} decline_reason={decline_reason}")
     except Exception as e:
         logger.error(f"MatchRequests update failed: {e}")
+
+    # --- Notify coordinator on confirmation ---
+    if intent == 'YES':
+        try:
+            notify_coordinator(request_id, donor_info, patient_blood_grp)
+            logger.info(f"Coordinator notified for confirmed request {request_id[:8]}")
+        except Exception as e:
+            logger.error(f"Coordinator notification failed: {e}")
 
     # --- Append turn to conversation history ---
     conv_history.append({
