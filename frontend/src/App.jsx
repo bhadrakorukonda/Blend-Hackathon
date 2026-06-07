@@ -3,6 +3,7 @@ import { HashRouter, Routes, Route, Navigate, NavLink, useLocation } from 'react
 import MatchDashboard from './pages/MatchDashboard'
 import AdminCenter from './pages/AdminCenter'
 import PatientPortal from './pages/PatientPortal'
+import DonorPortal from './pages/DonorPortal'
 
 const THEME_KEY = 'blood-warriors-theme'
 
@@ -73,6 +74,16 @@ function NavBar({ theme, onToggleTheme }) {
           >
             I NEED BLOOD
           </NavLink>
+          <NavLink
+            to="/donor"
+            className={({ isActive }) =>
+              isActive
+                ? 'nav-active-link text-[11px] tracking-widest font-mono'
+                : 'text-[11px] tracking-widest font-mono px-4 py-1.5 text-[#5050a0] hover:text-[#9090c0] transition-colors duration-150 rounded'
+            }
+          >
+            I'M A DONOR
+          </NavLink>
         </nav>
 
         <ThemeToggle theme={theme} onToggle={onToggleTheme} />
@@ -90,6 +101,7 @@ function AnimatedRoutes() {
         <Route path="/coordinator" element={<MatchDashboard />} />
         <Route path="/admin" element={<AdminCenter />} />
         <Route path="/patient" element={<PatientPortal />} />
+        <Route path="/donor" element={<DonorPortal />} />
       </Routes>
     </div>
   )

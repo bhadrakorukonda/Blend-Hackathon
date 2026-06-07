@@ -5,6 +5,12 @@ from decimal import Decimal
 
 dynamodb = boto3.resource('dynamodb', region_name='ap-south-1')
 match_requests_table = dynamodb.Table('MatchRequests')
+donors_table = dynamodb.Table('Donors')
+
+CORS_HEADERS = {
+    'Content-Type':                'application/json',
+    'Access-Control-Allow-Origin': '*',
+}
 
 
 def decimal_default(obj):
@@ -13,7 +19,78 @@ def decimal_default(obj):
     raise TypeError
 
 
+def reliability_pct(ratio):
+    try:
+        r = min(float(ratio), 5.0)
+    except (TypeError, ValueError):
+        return 50
+    return round((1 - r / 5.0) * 100)
+
+
+def loyalty_tier(donations):
+    try:
+        d = float(donations)
+    except (TypeError, ValueError):
+        d = 0
+    if d > 8:
+        return 'Gold'
+    if d >= 4:
+        return 'Silver'
+    return 'Bronze'
+
+
+def lookup_donor_by_phone(phone):
+    scan_kwargs = {
+        'FilterExpression': '#p = :phone',
+        'ExpressionAttributeNames': {'#p': 'phone'},
+        'ExpressionAttributeValues': {':phone': phone},
+    }
+    donor = None
+    while True:
+        resp = donors_table.scan(**scan_kwargs)
+        items = resp.get('Items', [])
+        if items:
+            donor = items[0]
+            break
+        if 'LastEvaluatedKey' not in resp:
+            break
+        scan_kwargs['ExclusiveStartKey'] = resp['LastEvaluatedKey']
+
+    if not donor:
+        return {
+            'statusCode': 404,
+            'headers': CORS_HEADERS,
+            'body': json.dumps({'error': 'No donor found with this phone number'}),
+        }
+
+    donations = donor.get('donations_till_date', 0)
+    profile = {
+        'donor_id':            str(donor.get('user_id', '')),
+        'name':                str(donor.get('name', '')),
+        'blood_group':         str(donor.get('blood_group', '')),
+        'city':                str(donor.get('city', '')),
+        'donations_till_date': donations,
+        'last_donated_date':   str(donor.get('last_donation_date', '')),
+        'next_eligible_date':  str(donor.get('next_eligible_date', '')),
+        'eligibility_status':  str(donor.get('eligibility_status', '')),
+        'donor_type':          str(donor.get('donor_type', '')),
+        'reliability_score':   reliability_pct(donor.get('calls_to_donations_ratio', 2.5)),
+        'loyalty_tier':        loyalty_tier(donations),
+    }
+
+    return {
+        'statusCode': 200,
+        'headers': CORS_HEADERS,
+        'body': json.dumps(profile, default=decimal_default),
+    }
+
+
 def lambda_handler(event, context):
+    # Donor self-service lookup: GET /admin?phone=<number>
+    query_params = event.get('queryStringParameters') or {}
+    if query_params.get('phone'):
+        return lookup_donor_by_phone(str(query_params['phone']).strip())
+
     # Scan all MatchRequests (paginated)
     resp  = match_requests_table.scan()
     items = list(resp.get('Items', []))
@@ -105,9 +182,6 @@ def lambda_handler(event, context):
 
     return {
         'statusCode': 200,
-        'headers': {
-            'Content-Type':                'application/json',
-            'Access-Control-Allow-Origin': '*',
-        },
+        'headers': CORS_HEADERS,
         'body': json.dumps(result, default=decimal_default),
     }
