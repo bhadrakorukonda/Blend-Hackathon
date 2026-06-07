@@ -165,6 +165,7 @@ export default function MatchDashboard() {
   const [results, setResults]       = useState(null)
   const [error, setError]           = useState(null)
   const [scanPhase, setScanPhase]   = useState(0)
+  const [elapsed, setElapsed]       = useState(null)
 
   const selectedPatient = patientIdx !== '' ? PATIENTS[Number(patientIdx)] : null
 
@@ -180,8 +181,11 @@ export default function MatchDashboard() {
     setLoading(true)
     setError(null)
     setResults(null)
+    setElapsed(null)
+    const startTime = Date.now()
     try {
       const data = await findDonors(selectedPatient.id)
+      setElapsed(((Date.now() - startTime) / 1000).toFixed(1))
       setResults(data)
     } catch (e) {
       setError(e.message || 'Match failed')
@@ -194,6 +198,7 @@ export default function MatchDashboard() {
     setResults(null)
     setError(null)
     setPatientIdx('')
+    setElapsed(null)
   }
 
   const donors     = results?.top_donors || []
@@ -314,6 +319,17 @@ export default function MatchDashboard() {
               ← NEW SEARCH
             </button>
           </div>
+
+          {/* Performance stats bar — donor pool size, matched count, time taken */}
+          {elapsed !== null && (
+            <div className="flex items-center gap-6 px-4 py-2 bg-[#0b0b1e] border border-[#1a1a38] rounded-lg text-[11px] font-mono text-[#4a4a80] mb-4">
+              <span><span className="text-[#e0e0f4] font-bold">7,033</span> donors evaluated</span>
+              <span className="text-[#1a1a38]">·</span>
+              <span><span className="text-emerald-400 font-bold">{donors.length}</span> matched</span>
+              <span className="text-[#1a1a38]">·</span>
+              <span><span className="text-amber-400 font-bold">{elapsed}s</span></span>
+            </div>
+          )}
 
           {/* Animated stats strip */}
           {topDonor && (
