@@ -189,13 +189,43 @@ def lambda_handler(event, context):
             except Exception as sns_err:
                 print(f'SNS publish FAILED: {sns_err}')
 
+        # Low-quality donor alert: fire a separate SNS message if the best match is weak
+        QUALITY_THRESHOLD = int(os.environ.get('QUALITY_THRESHOLD', 40))
+        top_score = top5[0]['score'] if top5 else 0
+        low_quality_alert = top_score < QUALITY_THRESHOLD
+
+        if low_quality_alert and SNS_TOPIC_ARN and SNS_TOPIC_ARN != 'PLACEHOLDER':
+            try:
+                patient_location = f"{patient.get('latitude', '')},{patient.get('longitude', '')}"
+                sns.publish(
+                    TopicArn=SNS_TOPIC_ARN,
+                    Message=json.dumps({
+                        'alert_type': 'LOW_DONOR_QUALITY',
+                        'patient_id': patient_id,
+                        'patient_blood_group': patient_blood_group,
+                        'patient_location': patient_location,
+                        'top_score': top_score,
+                        'donor_count_evaluated': len(results),
+                        'message': f'No quality donors found in this area. Highest match score was {top_score}/100. Manual intervention may be required.'
+                    }),
+                    Subject='LowDonorQualityAlert',
+                    MessageAttributes={
+                        'alert_type': {'DataType': 'String', 'StringValue': 'LOW_DONOR_QUALITY'}
+                    }
+                )
+                print('Low-quality alert SNS publish SUCCESS')
+            except Exception as alert_err:
+                print(f'Low-quality alert SNS publish FAILED: {alert_err}')
+
         return {
             'statusCode': 200,
             'headers': {'Access-Control-Allow-Origin': '*'},
             'body': json.dumps(sanitize({
                 'request_id': request_id,
                 'patient_blood_group': patient_blood_group,
-                'top_donors': top5
+                'top_donors': top5,
+                'low_quality_alert': low_quality_alert,
+                'top_score': top_score
             }))
         }
 

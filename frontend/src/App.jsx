@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { HashRouter, Routes, Route, Navigate, NavLink, useLocation } from 'react-router-dom'
 import MatchDashboard from './pages/MatchDashboard'
 import AdminCenter from './pages/AdminCenter'
+import PatientPortal from './pages/PatientPortal'
 
 const THEME_KEY = 'blood-warriors-theme'
 
@@ -62,6 +63,16 @@ function NavBar({ theme, onToggleTheme }) {
           >
             ADMIN
           </NavLink>
+          <NavLink
+            to="/patient"
+            className={({ isActive }) =>
+              isActive
+                ? 'nav-active-link text-[11px] tracking-widest font-mono !text-red-400'
+                : 'text-[11px] tracking-widest font-mono px-4 py-1.5 text-red-500/80 hover:text-red-400 transition-colors duration-150 rounded'
+            }
+          >
+            I NEED BLOOD
+          </NavLink>
         </nav>
 
         <ThemeToggle theme={theme} onToggle={onToggleTheme} />
@@ -78,6 +89,7 @@ function AnimatedRoutes() {
         <Route path="/" element={<Navigate to="/coordinator" replace />} />
         <Route path="/coordinator" element={<MatchDashboard />} />
         <Route path="/admin" element={<AdminCenter />} />
+        <Route path="/patient" element={<PatientPortal />} />
       </Routes>
     </div>
   )
