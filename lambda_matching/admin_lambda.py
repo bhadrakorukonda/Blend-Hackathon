@@ -62,6 +62,10 @@ def lambda_handler(event, context):
     hesitation_logistics = intent_counts.get('HESITANT_LOGISTICS', 0)
     hesitation_aware     = intent_counts.get('HESITANT_AWARE', 0)
 
+    # Donation follow-up outcomes: did confirmed donors actually donate?
+    donation_confirmed_count = sum(1 for i in items if i.get('donation_confirmed') is True)
+    donation_pending_count   = sum(1 for i in items if i.get('status') == 'confirmed' and not i.get('donation_confirmed'))
+
     requests = []
     for item in items:
         requests.append({
@@ -92,6 +96,10 @@ def lambda_handler(event, context):
         },
         'human_escalation_count': human_escalation_count,
         'human_escalations':      human_escalations,
+        'donation_outcomes': {
+            'confirmed': donation_confirmed_count,
+            'pending':   donation_pending_count,
+        },
         'requests':            requests,
     }
 

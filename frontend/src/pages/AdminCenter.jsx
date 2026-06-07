@@ -354,7 +354,7 @@ export default function AdminCenter() {
       {data && (
         <>
           {/* KPI row — count-up animation */}
-          <div key={`kpi-${dataVersion}`} className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
+          <div key={`kpi-${dataVersion}`} className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-5">
             <KpiCard label="TOTAL REQUESTS"   rawValue={data.total}              color="text-[#d0d0e8]" />
             <KpiCard label="CONFIRMED"        rawValue={sc.confirmed || 0}       color="text-emerald-400" />
             <KpiCard
@@ -364,6 +364,7 @@ export default function AdminCenter() {
               suffix="%"
             />
             <KpiCard label="AVG ESCALATIONS" rawValue={data.avg_escalations || 0} color="text-amber-400" isInt={false} />
+            <KpiCard label="DONATIONS CONFIRMED" rawValue={data.donation_outcomes?.confirmed || 0} color="text-emerald-400" />
           </div>
 
           {/* Mid row: responses + status */}

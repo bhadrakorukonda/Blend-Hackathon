@@ -3,7 +3,7 @@ import boto3
 import logging
 import os
 import uuid
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from urllib.parse import parse_qs
 import urllib.request
 import urllib.error
@@ -17,6 +17,7 @@ match_requests_table = dynamodb.Table('MatchRequests')
 bot_sessions_table   = dynamodb.Table('BotSessions')
 donors_table         = dynamodb.Table('Donors')
 bedrock = boto3.client('bedrock-runtime', region_name='ap-south-1')
+scheduler = boto3.client('scheduler', region_name='ap-south-1')
 
 BEDROCK_MODEL        = 'anthropic.claude-3-haiku-20240307-v1:0'
 TWILIO_ACCOUNT_SID   = os.environ.get('TWILIO_ACCOUNT_SID', '')
@@ -42,8 +43,10 @@ AWARE_FALLBACK = (
 )
 
 HARDCODED_REPLIES = {
-    'YES': "Blood Warriors: Thank you! Your confirmation is recorded. A coordinator will be in touch shortly.",
-    'NO':  "Blood Warriors: Understood. We will reach the next matched donor. Thank you for letting us know.",
+    'YES':     "Blood Warriors: Thank you! Your confirmation is recorded. A coordinator will be in touch shortly.",
+    'NO':      "Blood Warriors: Understood. We will reach the next matched donor. Thank you for letting us know.",
+    'DONATED': "Thank you! Your donation has been recorded. You are a lifesaver.",
+    'UNABLE':  "Thank you for letting us know. We hope to see you next time.",
 }
 MAYBE_FALLBACK = "Blood Warriors: Got it. If you become available, reply YES at any time. Thank you."
 
@@ -77,6 +80,8 @@ def classify_intent_and_language(text, history):
       HESITANT_AWARE    — unsure about safety, process, eligibility, or what donation involves
       FLAGGED_HUMAN     — abuse, hostility, distress, mental health signals, medical emergency,
                           or too ambiguous to handle autonomously — needs human coordinator review
+      DONATED           — donor confirms the donation happened (in response to a follow-up)
+      UNABLE            — donor confirms they could not make it to donate (in response to a follow-up)
 
     Also returns:
       decline_reason (only meaningful when intent=NO):
@@ -103,7 +108,11 @@ def classify_intent_and_language(text, history):
         "  HESITANT_AWARE     = donor unsure about what donation involves "
         "(e.g. asks if it is safe, how long it takes, will it hurt, asks about eligibility, blood loss)\n"
         "  FLAGGED_HUMAN      = reply contains abuse, hostility, distress, mental health signals, "
-        "medical emergency, or is too ambiguous to handle autonomously — a human coordinator must review\n\n"
+        "medical emergency, or is too ambiguous to handle autonomously — a human coordinator must review\n"
+        "  DONATED            = donor confirms they completed the blood donation "
+        "(e.g. 'yes I donated', 'done', 'completed it')\n"
+        "  UNABLE             = donor confirms they could NOT make it to donate "
+        "(e.g. 'could not go', 'missed it', 'wasn't able to')\n\n"
         "DECLINE_REASON — only when intent is NO, pick one:\n"
         "  TRANSPORT  = no vehicle or travel issue\n"
         "  TIMING     = busy, wrong time, schedule conflict\n"
@@ -121,6 +130,8 @@ def classify_intent_and_language(text, history):
         "  HESITANT_AWARE hi NONE\n"
         "  MAYBE en NONE\n"
         "  FLAGGED_HUMAN en NONE\n"
+        "  DONATED en NONE\n"
+        "  UNABLE en NONE\n"
         "Response:"
     )
     body = json.dumps({
@@ -141,7 +152,10 @@ def classify_intent_and_language(text, history):
         language       = 'en'
         decline_reason = 'OTHER'
 
-        valid_intents = {'YES', 'NO', 'MAYBE', 'HESITANT_LOGISTICS', 'HESITANT_AWARE', 'FLAGGED_HUMAN'}
+        valid_intents = {
+            'YES', 'NO', 'MAYBE', 'HESITANT_LOGISTICS', 'HESITANT_AWARE',
+            'FLAGGED_HUMAN', 'DONATED', 'UNABLE',
+        }
         valid_reasons = {'TRANSPORT', 'TIMING', 'HEALTH', 'AWARENESS', 'OTHER', 'NONE'}
 
         for word in valid_intents:
@@ -273,10 +287,12 @@ def get_donor_info_from_request(match_request):
 
 
 def get_latest_pending_request():
+    # Includes 'confirmed' so a donor's later DONATED/UNABLE follow-up reply
+    # can still be matched back to their already-confirmed request.
     resp = match_requests_table.scan(
-        FilterExpression='#s IN (:p, :a)',
+        FilterExpression='#s IN (:p, :a, :c)',
         ExpressionAttributeNames={'#s': 'status'},
-        ExpressionAttributeValues={':p': 'pending', ':a': 'awaiting'}
+        ExpressionAttributeValues={':p': 'pending', ':a': 'awaiting', ':c': 'confirmed'}
     )
     items = resp.get('Items', [])
     if not items:
@@ -330,6 +346,31 @@ def notify_coordinator(request_id, donor_info, patient_blood_group):
         return
 
     send_whatsapp(TWILIO_WHATSAPP_TO, message)
+
+
+def schedule_donation_followup(from_phone, request_id, donor_name):
+    fire_time = datetime.utcnow() + timedelta(hours=2)
+    fire_time_str = fire_time.strftime('%Y-%m-%dT%H:%M:%S')
+
+    try:
+        scheduler.create_schedule(
+            Name=f"followup-{request_id[:8]}",
+            ScheduleExpression=f"at({fire_time_str})",
+            FlexibleTimeWindow={'Mode': 'OFF'},
+            Target={
+                'Arn': 'arn:aws:lambda:ap-south-1:179503921630:function:FollowUpLambda',
+                'RoleArn': 'arn:aws:iam::179503921630:role/BloodWarriorsLambdaRole',
+                'Input': json.dumps({
+                    'phone': from_phone,
+                    'request_id': request_id,
+                    'donor_name': donor_name
+                })
+            },
+            ActionAfterCompletion='DELETE'
+        )
+        logger.info(f"Follow-up scheduled for {from_phone} in 2 hours")
+    except Exception as e:
+        logger.error(f"Follow-up scheduling failed: {e}")
 
 
 def twiml(message):
@@ -396,6 +437,8 @@ def lambda_handler(event, context):
         'HESITANT_LOGISTICS':  'awaiting',
         'HESITANT_AWARE':      'awaiting',
         'FLAGGED_HUMAN':       'awaiting',
+        'DONATED':             'confirmed',
+        'UNABLE':              'confirmed',
     }
     new_status = status_map.get(intent, 'awaiting')
 
@@ -423,6 +466,15 @@ def lambda_handler(event, context):
             expr_values[':hef'] = True
             expr_values[':her'] = reply_text
 
+        # DONATED / UNABLE: record the donation follow-up outcome
+        if intent == 'DONATED':
+            update_expr += ', donation_confirmed = :dc, donation_date = :dd'
+            expr_values[':dc'] = True
+            expr_values[':dd'] = date.today().isoformat()
+        elif intent == 'UNABLE':
+            update_expr += ', donation_confirmed = :dc'
+            expr_values[':dc'] = False
+
         match_requests_table.update_item(
             Key={'request_id': request_id},
             UpdateExpression=update_expr,
@@ -433,13 +485,29 @@ def lambda_handler(event, context):
     except Exception as e:
         logger.error(f"MatchRequests update failed: {e}")
 
-    # --- Notify coordinator on confirmation ---
+    # --- Notify coordinator on confirmation + schedule donation follow-up ---
     if intent == 'YES':
         try:
             notify_coordinator(request_id, donor_info, patient_blood_grp)
             logger.info(f"Coordinator notified for confirmed request {request_id[:8]}")
         except Exception as e:
             logger.error(f"Coordinator notification failed: {e}")
+
+        schedule_donation_followup(from_phone, request_id, donor_info.get('name', 'Donor'))
+
+    # --- Increment donor's confirmed_donations when they confirm the donation happened ---
+    if intent == 'DONATED':
+        try:
+            donor_id = donor_info.get('user_id', '')
+            if donor_id:
+                donors_table.update_item(
+                    Key={'user_id': donor_id},
+                    UpdateExpression='SET confirmed_donations = if_not_exists(confirmed_donations, :zero) + :one',
+                    ExpressionAttributeValues={':zero': 0, ':one': 1}
+                )
+                logger.info(f"Donor {donor_id[:16]} confirmed_donations incremented")
+        except Exception as e:
+            logger.error(f"Donor confirmed_donations update failed: {e}")
 
     # --- Append turn to conversation history ---
     conv_history.append({
@@ -468,8 +536,8 @@ def lambda_handler(event, context):
     except Exception as e:
         logger.error(f"BotSessions write failed: {e}")
 
-    # --- Dynamic re-ranking on NO ---
-    if intent == 'NO':
+    # --- Dynamic re-ranking on NO / UNABLE (7-day penalty: push back in rotation) ---
+    if intent in ('NO', 'UNABLE'):
         try:
             current_rank = int(match_request.get('current_donor_rank', 0))
             top_donors   = json.loads(match_request.get('top_donors', '[]'))
@@ -480,7 +548,7 @@ def lambda_handler(event, context):
                     UpdateExpression='SET last_contacted_date = :today',
                     ExpressionAttributeValues={':today': date.today().isoformat()}
                 )
-                logger.info(f"Re-rank: last_contacted_date={date.today()} for donor {donor_id[:16]} (said NO, reason={decline_reason})")
+                logger.info(f"Re-rank: last_contacted_date={date.today()} for donor {donor_id[:16]} (said {intent}, reason={decline_reason})")
         except Exception as e:
             logger.error(f"Re-rank update failed: {e}")
 
